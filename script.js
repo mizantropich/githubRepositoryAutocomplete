@@ -24,10 +24,6 @@ async function fetchRepos(query) {
   }
 }
 
-fetchRepos("react").then((repos) => {
-  console.log("Test fetchRepos:", repos);
-});
-
 function debounce(fn, delay) {
   let timer;
   return (...args) => {
