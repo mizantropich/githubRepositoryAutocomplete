@@ -1,219 +1,130 @@
+// Импортируем константы
+import { DEBOUNCE_DELAY } from './constants.js';
+
+// Импортируем утилиты
+import { debounce } from './debounce.js';
+
+// Импортируем API
+import { searchRepos } from './api.js';
+
+// Импортируем управление состоянием
+import { 
+  initializeState, 
+  getSelectedRepos, 
+  addRepo, 
+  removeRepoByIndex 
+} from './state.js';
+
+// Импортируем UI функции
+import { 
+  renderSuggestions, 
+  renderSelectedRepos, 
+  renderStatus, 
+  clearSuggestions 
+} from './ui.js';
+
+// Получаем DOM элементы
 const input = document.getElementById("search");
 const suggestionsEl = document.getElementById("suggestions");
 const repoListEl = document.getElementById("results");
 
-const selectedRepos = [];
-
-let currentAbortController = null;
-let lastRequestId = 0;
-
-async function fetchRepos(query, requestId) {
-  if (!query) return [];
-  if (currentAbortController) {
-    currentAbortController.abort();
-  }
-  currentAbortController = new AbortController();
-  try {
-    const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(
-      query
-    )}&per_page=5`;
-    const res = await fetch(url, {
-      headers: { Accept: "application/vnd.github.v3+json" },
-      signal: currentAbortController.signal,
-    });
-
-    if (res.status === 403) {
-      renderStatus("Слишком много запросов (rate limit)");
-      return [];
-    }
-    if (res.status === 422) {
-      renderStatus("Некорректный запрос (422)");
-      return [];
-    }
-    if (res.status >= 500) {
-      renderStatus("Ошибка сервера GitHub (5xx)");
-      return [];
-    }
-    if (!res.ok) {
-      renderStatus(`Ошибка: ${res.status}`);
-      return [];
-    }
-
-    const data = await res.json();
-    if (requestId !== lastRequestId) return [];
-    return Array.isArray(data.items) ? data.items : [];
-  } catch (e) {
-    if (e.name === "AbortError") return [];
-    renderStatus("Ошибка сети или запроса");
-    return [];
-  }
-}
-
-function debounce(fn, delay) {
-  let timer;
-  return (...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), delay);
-  };
-}
-
+// Обработчик поискового ввода
 async function handleSearchInput(text) {
-  if (text.trim().length < 2) {
-    renderSuggestions([]);
+  // Если текст слишком короткий, очищаем подсказки
+  if (text.trim().length <= 2) {
+    clearSuggestions(suggestionsEl);
     return;
   }
-  renderStatus("Ищем…");
-  lastRequestId += 1;
-  const requestId = lastRequestId;
-  const repos = await fetchRepos(text, requestId);
-  if (requestId === lastRequestId) {
-    renderSuggestions(repos);
-  }
-}
 
-const debouncedHandleInput = debounce(handleSearchInput, 800);
-
-input.addEventListener("input", (e) => {
-  debouncedHandleInput(e.target.value);
-});
-
-function renderSuggestions(repos) {
-  suggestionsEl.innerHTML = "";
-  if (!repos.length) {
-    renderStatus("Ничего не найдено");
-    return;
-  }
-  repos.forEach((repo) => {
-    const li = document.createElement("li");
-    li.textContent = repo.full_name;
-    li.tabIndex = 0;
-    li.className = "autocomplete-item";
-
-    const isAdded = selectedRepos.some((r) => r.full_name === repo.full_name);
-    if (isAdded) {
-      li.classList.add("autocomplete-item--added");
-      li.title = "Уже добавлено";
-      li.style.background = "#e0ffe0";
-      li.style.cursor = "not-allowed";
-    } else {
-      li.addEventListener("click", () => {
-        addRepo(repo);
-        input.value = "";
-        suggestionsEl.innerHTML = "";
-        input.focus();
-      });
-      li.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") li.click();
-      });
+  try {
+    // Показываем индикатор загрузки
+    renderStatus(suggestionsEl, "Ищем…");
+    
+    // Выполняем поиск через API модуль
+    const repos = await searchRepos(text);
+    
+    // Рендерим результаты через UI модуль
+    renderSuggestions(suggestionsEl, repos, handleRepoClick);
+    
+  } catch (error) {
+    // Обрабатываем ошибки от API модуля
+    let errorMessage = "Ошибка сети или запроса";
+    
+    if (error.message === 'RATE_LIMIT') {
+      errorMessage = "Слишком много запросов (rate limit)";
+    } else if (error.message === 'INVALID_REQUEST') {
+      errorMessage = "Некорректный запрос (422)";
+    } else if (error.message === 'SERVER_ERROR') {
+      errorMessage = "Ошибка сервера GitHub (5xx)";
     }
-    suggestionsEl.appendChild(li);
+    
+    renderStatus(suggestionsEl, errorMessage);
+  }
+}
+
+// Колбэк для клика по репозиторию в подсказках
+function handleRepoClick(repo) {
+  // Добавляем репозиторий через state модуль
+  const success = addRepo(repo);
+  
+  if (success) {
+    // Очищаем поле ввода и подсказки
+    input.value = "";
+    clearSuggestions(suggestionsEl);
+    input.focus();
+    
+    // Перерендериваем список выбранных
+    updateSelectedReposList();
+  }
+}
+
+// Колбэк для удаления репозитория
+function handleRemoveRepo(index) {
+  // Удаляем через state модуль
+  const success = removeRepoByIndex(index);
+  
+  if (success) {
+    // Перерендериваем список
+    updateSelectedReposList();
+  }
+}
+
+// Обновляет отображение списка выбранных репозиториев
+function updateSelectedReposList() {
+  // Получаем актуальные данные из state модуля
+  const repos = getSelectedRepos();
+  
+  // Рендерим через UI модуль
+  renderSelectedRepos(repoListEl, repos, handleRemoveRepo);
+}
+
+// Обработчик клика вне области поиска (закрытие подсказок)
+function handleOutsideClick(e) {
+  // Если клик не внутри поля поиска или подсказок
+  if (!input.contains(e.target) && !suggestionsEl.contains(e.target)) {
+    clearSuggestions(suggestionsEl);
+  }
+}
+
+// Создаём debounced версию обработчика поиска
+const debouncedHandleInput = debounce(handleSearchInput, DEBOUNCE_DELAY);
+
+// Функция инициализации приложения
+function initializeApp() {
+  // Инициализируем состояние (загружаем из localStorage)
+  initializeState();
+  
+  // Отображаем уже сохранённые репозитории
+  updateSelectedReposList();
+  
+  // Привязываем события
+  input.addEventListener("input", (e) => {
+    debouncedHandleInput(e.target.value);
   });
+  
+  // Обработчик клика вне области поиска
+  document.addEventListener("click", handleOutsideClick);
 }
 
-document.addEventListener("DOMContentLoaded", function () {
-  const saved = localStorage.getItem("selectedRepos");
-  if (saved) {
-    try {
-      const arr = JSON.parse(saved);
-      if (Array.isArray(arr)) {
-        selectedRepos.push(...arr);
-        renderSelectedRepos();
-      }
-    } catch (e) {
-      console.warn(e);
-    }
-  }
-});
-
-function saveSelectedRepos() {
-  localStorage.setItem("selectedRepos", JSON.stringify(selectedRepos));
-}
-
-function addRepo(repo) {
-  const exists = selectedRepos.some((r) => r.full_name === repo.full_name);
-  if (exists) return;
-  selectedRepos.push({
-    id: repo.id,
-    name: repo.name,
-    full_name: repo.full_name,
-    html_url: repo.html_url,
-    stargazers_count: repo.stargazers_count,
-    ownerName: repo.owner.login,
-  });
-  saveSelectedRepos();
-  renderSelectedRepos();
-}
-
-function renderSelectedRepos() {
-  repoListEl.innerHTML = "";
-  selectedRepos.forEach((r, idx) => {
-    const li = document.createElement("li");
-    li.className = "results-item";
-    li.dataset.idx = idx;
-
-    const infoDiv = document.createElement("div");
-    infoDiv.className = "results-item__info";
-
-    const link = document.createElement("a");
-    link.href = r.html_url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = r.name;
-    link.className = "results-item__link";
-
-    const owner = document.createElement("span");
-    owner.textContent = ` by ${r.ownerName}`;
-    owner.className = "results-item__owner";
-
-    const stars = document.createElement("span");
-    stars.textContent = ` ★ ${r.stargazers_count}`;
-    stars.className = "results-item__stars";
-
-    infoDiv.appendChild(link);
-    infoDiv.appendChild(owner);
-    infoDiv.appendChild(stars);
-
-    const removeBtn = document.createElement("button");
-    removeBtn.textContent = "✕";
-    removeBtn.className = "results-item__remove";
-    removeBtn.title = "Удалить";
-    removeBtn.type = "button";
-    removeBtn.dataset.idx = idx;
-
-    li.appendChild(infoDiv);
-    li.appendChild(removeBtn);
-    repoListEl.appendChild(li);
-  });
-}
-
-repoListEl.addEventListener("click", function (e) {
-  const btn = e.target.closest(".results-item__remove");
-  if (btn) {
-    const idx = parseInt(btn.dataset.idx, 10);
-    if (!isNaN(idx)) {
-      selectedRepos.splice(idx, 1);
-      saveSelectedRepos();
-      renderSelectedRepos();
-    }
-  }
-});
-
-function renderStatus(message) {
-  suggestionsEl.innerHTML = "";
-  if (message) {
-    const li = document.createElement("li");
-    li.textContent = message;
-    li.className = "autocomplete-item autocomplete-status";
-    li.style.cursor = "default";
-    suggestionsEl.appendChild(li);
-  }
-}
-
-document.addEventListener("click", (e) => {
-  if (
-    !input.contains(e.target) &&
-    !suggestionsEl.contains(e.target)
-  ) {
-    suggestionsEl.innerHTML = "";
-  }
-});
+// Ждём загрузки DOM и запускаем приложение
+document.addEventListener("DOMContentLoaded", initializeApp);
