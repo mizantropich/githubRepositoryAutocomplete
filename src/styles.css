@@ -114,6 +114,10 @@
   text-decoration: none;
 }
 
+.results-item__link:hover {	
+	text-decoration: underline;
+}
+
 .results-item__owner,
 .results-item__stars {
   color: #333;

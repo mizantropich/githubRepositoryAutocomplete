@@ -72,8 +72,15 @@ export function renderSelectedRepos(repoListEl, repos, onRemoveClick) {
 
     // Имя владельца
     const owner = document.createElement("span");
-    owner.textContent = ` by ${repo.ownerName}`;
+    owner.textContent = " by ";
     owner.className = "results-item__owner";
+
+		const ownerLink = document.createElement("a");
+		ownerLink.href = repo.ownerUrl;
+		ownerLink.target = "_blank";
+		ownerLink.rel = "noopener noreferrer";
+    ownerLink.textContent = repo.ownerName;
+    ownerLink.className = "results-item__link";
 
     // Количество звёзд
     const stars = document.createElement("span");
@@ -83,6 +90,7 @@ export function renderSelectedRepos(repoListEl, repos, onRemoveClick) {
     // Собираем информационный блок
     infoDiv.appendChild(link);
     infoDiv.appendChild(owner);
+		owner.appendChild(ownerLink);
     infoDiv.appendChild(stars);
 
     // Кнопка удаления

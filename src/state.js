@@ -35,7 +35,8 @@ export function addRepo(repo) {
     full_name: repo.full_name,
     html_url: repo.html_url,
     stargazers_count: repo.stargazers_count,
-    ownerName: repo.owner.login, // Переименовываем для удобства
+    ownerName: repo.owner.login,
+		ownerUrl: repo.owner.html_url, // Переименовываем для удобства
   };
   
   // Добавляем в массив
