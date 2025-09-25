@@ -64,19 +64,6 @@ export function removeRepoByIndex(index) {
   return true; // Успешно удалено
 }
 
-// Удалить репозиторий по full_name
-export function removeRepoByName(fullName) {
-  // Найти индекс репозитория
-  const index = selectedRepos.findIndex(r => r.full_name === fullName);
-  
-  if (index === -1) {
-    return false; // Репозиторий не найден
-  }
-  
-  // Используем уже готовую функцию удаления по индексу
-  return removeRepoByIndex(index);
-}
-
 // Очистить все выбранные репозитории
 export function clearAllRepos() {
   selectedRepos = [];
